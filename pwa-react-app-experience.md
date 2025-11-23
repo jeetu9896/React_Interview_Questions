@@ -282,3 +282,120 @@ Enables service workers and secure APIs (push, geolocation, etc.), protects inte
 - App store presence requires packaging/wrappers.
 
 - Browser inconsistencies necessitate testing and fallbacks.
+
+## Service Workers and Caching (Q21–30)
+
+### 21. What is the role of the ‘install’ event in a service worker?
+Pre-caches essential assets so the app shell loads instantly and offline on subsequent visits.
+
+```js
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open('precache-v1').then((cache) =>
+    cache.addAll(['/', '/index.html', '/styles.css', '/main.js', '/offline.html'])
+  ));
+});
+```
+
+---
+### 22. How do you cache assets using service workers?
+Use Cache API during install and dynamic caching during fetch. Precache app shell; cache-as-you-go for API responses.
+
+---
+
+### 23. Can you explain how service worker updates are managed?
+A new SW installs and enters waiting; it activates when the old SW releases control. You can force activation with skipWaiting() and clients.claim() (carefully, to avoid breaking active sessions).
+
+```js
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+```
+
+---
+
+### 24. What different caching strategies can be implemented with service workers?
+- Cache First: Best for static assets; fast.
+
+- Network First: Best for dynamic content; ensures freshness.
+
+- Stale-While-Revalidate: Fast response + background refresh.
+
+- Cache Only / Network Only: Specific use cases.
+
+```js
+// Stale-While-Revalidate
+self.addEventListener('fetch', (event) => {
+  event.respondWith((async () => {
+    const cache = await caches.open('swr-v1');
+    const cached = await cache.match(event.request);
+    const network = fetch(event.request).then((res) => {
+      cache.put(event.request, res.clone());
+      return res;
+    });
+    return cached || network;
+  })());
+});
+```
+
+---
+
+### 25. Describe how you would use a service worker to intercept network requests.
+Handle fetch events, respond from cache or network, implement fallbacks, and transform requests/responses if needed.
+
+```js
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
+});
+```
+
+---
+
+### 26. What is a FetchEvent in the context of service workers?
+Represents a network request; service worker can call event.respondWith() to provide a custom response, enabling caching and offline strategies.
+
+---
+
+### 27. How do you handle errors in a service worker script?
+Use try/catch around async logic, provide fallback responses, log errors, avoid unhandled promise rejections, and test edge cases (timeouts, offline).
+
+```js
+self.addEventListener('fetch', (event) => {
+  event.respondWith((async () => {
+    try { return await fetch(event.request); }
+    catch (err) { console.error('Fetch failed', err); return caches.match('/offline.html'); }
+  })());
+});
+```
+
+---
+
+### 28. Discuss how service workers can be debugged.
+- Chrome DevTools → Application tab for SW, cache, push subscriptions.
+
+- Network tab for throttling/offline.
+
+- Console logs from SW; clients.matchAll() for broadcasting debug info.
+
+---
+
+### 29. What is the ‘activate’ event in a service worker and what is it used for?
+Cleanup outdated caches and claim clients to control pages immediately.
+
+```js
+self.addEventListener('activate', (event) => {
+  const keep = ['precache-v2', 'dynamic-v2'];
+  event.waitUntil(caches.keys().then((keys) => Promise.all(
+    keys.filter((k) => !keep.includes(k)).map((k) => caches.delete(k))
+  )));
+});
+```
+----
+
+### 30. Explain the concept of “cache busting” and why it’s important for PWAs.
+Prevents serving stale assets by changing filenames (hashes) or query strings on release. Helps browsers and SW fetch updated files.
+
+```html
+<link rel="stylesheet" href="/styles.3a9c1f.css">
+<script src="/main.8fd2b7.js" defer></script>
+```
+---
